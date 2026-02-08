@@ -65,15 +65,28 @@ def configure(
 
 
 @mcp.tool()
-def redact_file(file_path: str, entity_types: list[str] | None = None) -> str:
+def redact_file(
+    file_path: str,
+    entity_types: list[str] | None = None,
+    use_placeholders: bool = True,
+) -> str:
     """Redact sensitive data in a file. Writes a new file with '_redacted' suffix.
+
+    Supports: .txt, .csv, .log, .md, .pdf, .xlsx, .docx, .doc
 
     Args:
         file_path: Absolute path to the file to redact.
         entity_types: Optional list of entity types to redact.
+        use_placeholders: If True (default), use [ENTITY_TYPE_N] placeholders (reversible).
+                          If False, use black-box redaction for PDFs (irreversible).
     """
     from .tools.redact_file import handle_redact_file
-    return handle_redact_file(engine, file_path=file_path, entity_types=entity_types)
+    return handle_redact_file(
+        engine,
+        file_path=file_path,
+        entity_types=entity_types,
+        use_placeholders=use_placeholders,
+    )
 
 
 def main():

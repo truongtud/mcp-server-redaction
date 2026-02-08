@@ -66,3 +66,17 @@ class TestPlainTextHandler:
             for p in [input_path, redacted_path, unredacted_path]:
                 if os.path.exists(p):
                     os.unlink(p)
+
+
+import pytest
+from mcp_server_redaction.handlers import get_handler
+
+
+class TestHandlerDispatch:
+    def test_get_handler_txt(self):
+        handler = get_handler(".txt")
+        assert isinstance(handler, PlainTextHandler)
+
+    def test_get_handler_unsupported(self):
+        with pytest.raises(ValueError, match="Unsupported file extension"):
+            get_handler(".xyz")
