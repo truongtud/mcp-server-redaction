@@ -2,10 +2,12 @@ import os
 import tempfile
 
 import docx as python_docx
+import fitz  # PyMuPDF
 import openpyxl
 
 from mcp_server_redaction.engine import RedactionEngine
 from mcp_server_redaction.handlers.docx_handler import DocxHandler
+from mcp_server_redaction.handlers.pdf import PdfHandler
 from mcp_server_redaction.handlers.plain_text import PlainTextHandler
 from mcp_server_redaction.handlers.xlsx import XlsxHandler
 
@@ -218,3 +220,86 @@ class TestXlsxHandler:
 
             wb_out = openpyxl.load_workbook(unredacted_path)
             assert wb_out.active["A1"].value == "john@example.com"
+
+
+def _create_test_pdf(path: str, pages: list[str]) -> None:
+    """Helper: create a PDF with one text block per page."""
+    doc = fitz.open()
+    for text in pages:
+        page = doc.new_page()
+        page.insert_text((72, 72), text, fontsize=12)
+    doc.save(path)
+    doc.close()
+
+
+class TestPdfHandler:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+        self.handler = PdfHandler()
+
+    def test_redact_pdf_placeholder_mode(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.pdf")
+            output_path = os.path.join(tmpdir, "test_redacted.pdf")
+
+            _create_test_pdf(input_path, [
+                "Contact john@example.com for details."
+            ])
+
+            result = self.handler.redact(
+                self.engine, input_path, output_path,
+                use_placeholders=True,
+            )
+            assert result["entities_found"] >= 1
+            assert result["session_id"] is not None
+
+            doc = fitz.open(output_path)
+            page_text = doc[0].get_text()
+            doc.close()
+            assert "john@example.com" not in page_text
+            assert "[EMAIL_ADDRESS_1]" in page_text
+
+    def test_redact_pdf_blackbox_mode(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.pdf")
+            output_path = os.path.join(tmpdir, "test_redacted.pdf")
+
+            _create_test_pdf(input_path, [
+                "Contact john@example.com for details."
+            ])
+
+            result = self.handler.redact(
+                self.engine, input_path, output_path,
+                use_placeholders=False,
+            )
+            assert result["entities_found"] >= 1
+            assert result["session_id"] is None
+
+            doc = fitz.open(output_path)
+            page_text = doc[0].get_text()
+            doc.close()
+            assert "john@example.com" not in page_text
+
+    def test_unredact_pdf(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.pdf")
+            redacted_path = os.path.join(tmpdir, "test_redacted.pdf")
+            unredacted_path = os.path.join(tmpdir, "test_unredacted.pdf")
+
+            _create_test_pdf(input_path, [
+                "Contact john@example.com for details."
+            ])
+
+            result = self.handler.redact(
+                self.engine, input_path, redacted_path,
+                use_placeholders=True,
+            )
+            mappings = self.engine.state.get_mappings(result["session_id"])
+
+            undo = self.handler.unredact(redacted_path, unredacted_path, mappings)
+            assert undo["entities_restored"] >= 1
+
+            doc = fitz.open(unredacted_path)
+            page_text = doc[0].get_text()
+            doc.close()
+            assert "john@example.com" in page_text
