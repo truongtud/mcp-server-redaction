@@ -1,4 +1,10 @@
 import json
+import os
+import tempfile
+
+import docx as python_docx
+import fitz
+import openpyxl
 
 from mcp_server_redaction.engine import RedactionEngine
 from mcp_server_redaction.tools import (
@@ -7,6 +13,8 @@ from mcp_server_redaction.tools import (
     handle_analyze,
     handle_configure,
 )
+from mcp_server_redaction.tools.redact_file import handle_redact_file
+from mcp_server_redaction.tools.unredact_file import handle_unredact_file
 
 
 class TestEndToEnd:
@@ -66,3 +74,85 @@ class TestEndToEnd:
         redact_result = json.loads(handle_redact(self.engine, text=text))
         assert "[PROJECT_CODE_1]" in redact_result["redacted_text"]
         assert "PRJ-1234" not in redact_result["redacted_text"]
+
+
+class TestFileFormatRoundtrips:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+
+    def test_docx_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.docx")
+            doc = python_docx.Document()
+            doc.add_paragraph("Contact john@example.com for details.")
+            doc.save(input_path)
+
+            redact_result = json.loads(
+                handle_redact_file(self.engine, file_path=input_path)
+            )
+            assert redact_result["entities_found"] >= 1
+
+            unredact_result = json.loads(
+                handle_unredact_file(
+                    self.engine,
+                    file_path=redact_result["redacted_file_path"],
+                    session_id=redact_result["session_id"],
+                )
+            )
+            assert unredact_result["entities_restored"] >= 1
+
+            doc_out = python_docx.Document(unredact_result["unredacted_file_path"])
+            assert "john@example.com" in doc_out.paragraphs[0].text
+
+    def test_xlsx_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.xlsx")
+            wb = openpyxl.Workbook()
+            wb.active["A1"] = "john@example.com"
+            wb.save(input_path)
+
+            redact_result = json.loads(
+                handle_redact_file(self.engine, file_path=input_path)
+            )
+            assert redact_result["entities_found"] >= 1
+
+            unredact_result = json.loads(
+                handle_unredact_file(
+                    self.engine,
+                    file_path=redact_result["redacted_file_path"],
+                    session_id=redact_result["session_id"],
+                )
+            )
+            assert unredact_result["entities_restored"] >= 1
+
+            wb_out = openpyxl.load_workbook(unredact_result["unredacted_file_path"])
+            assert wb_out.active["A1"].value == "john@example.com"
+
+    def test_pdf_placeholder_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.pdf")
+            doc = fitz.open()
+            page = doc.new_page()
+            page.insert_text((72, 72), "Contact john@example.com for details.", fontsize=12)
+            doc.save(input_path)
+            doc.close()
+
+            redact_result = json.loads(
+                handle_redact_file(
+                    self.engine, file_path=input_path, use_placeholders=True
+                )
+            )
+            assert redact_result["entities_found"] >= 1
+
+            unredact_result = json.loads(
+                handle_unredact_file(
+                    self.engine,
+                    file_path=redact_result["redacted_file_path"],
+                    session_id=redact_result["session_id"],
+                )
+            )
+            assert unredact_result["entities_restored"] >= 1
+
+            doc_out = fitz.open(unredact_result["unredacted_file_path"])
+            assert "john@example.com" in doc_out[0].get_text()
+            doc_out.close()
