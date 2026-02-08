@@ -2,10 +2,12 @@ import os
 import tempfile
 
 import docx as python_docx
+import openpyxl
 
 from mcp_server_redaction.engine import RedactionEngine
 from mcp_server_redaction.handlers.docx_handler import DocxHandler
 from mcp_server_redaction.handlers.plain_text import PlainTextHandler
+from mcp_server_redaction.handlers.xlsx import XlsxHandler
 
 
 class TestPlainTextHandler:
@@ -152,3 +154,67 @@ class TestDocxHandler:
             out_doc = python_docx.Document(output_path)
             cell_text = out_doc.tables[0].cell(0, 1).text
             assert "john@example.com" not in cell_text
+
+
+class TestXlsxHandler:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+        self.handler = XlsxHandler()
+
+    def test_redact_xlsx(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.xlsx")
+            output_path = os.path.join(tmpdir, "test_redacted.xlsx")
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws["A1"] = "Name"
+            ws["B1"] = "Email"
+            ws["A2"] = "John Smith"
+            ws["B2"] = "john@example.com"
+            wb.save(input_path)
+
+            result = self.handler.redact(self.engine, input_path, output_path)
+            assert result["entities_found"] >= 1
+            assert result["session_id"] is not None
+
+            wb_out = openpyxl.load_workbook(output_path)
+            ws_out = wb_out.active
+            assert "john@example.com" not in str(ws_out["B2"].value)
+            assert ws_out["A1"].value == "Name"
+
+    def test_redact_xlsx_multiple_sheets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.xlsx")
+            output_path = os.path.join(tmpdir, "test_redacted.xlsx")
+
+            wb = openpyxl.Workbook()
+            ws1 = wb.active
+            ws1.title = "Sheet1"
+            ws1["A1"] = "john@example.com"
+            ws2 = wb.create_sheet("Sheet2")
+            ws2["A1"] = "jane@example.com"
+            wb.save(input_path)
+
+            result = self.handler.redact(self.engine, input_path, output_path)
+            assert result["entities_found"] >= 2
+
+    def test_unredact_xlsx(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.xlsx")
+            redacted_path = os.path.join(tmpdir, "test_redacted.xlsx")
+            unredacted_path = os.path.join(tmpdir, "test_unredacted.xlsx")
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws["A1"] = "john@example.com"
+            wb.save(input_path)
+
+            result = self.handler.redact(self.engine, input_path, redacted_path)
+            mappings = self.engine.state.get_mappings(result["session_id"])
+
+            undo = self.handler.unredact(redacted_path, unredacted_path, mappings)
+            assert undo["entities_restored"] >= 1
+
+            wb_out = openpyxl.load_workbook(unredacted_path)
+            assert wb_out.active["A1"].value == "john@example.com"
