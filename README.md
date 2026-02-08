@@ -6,6 +6,7 @@ A Python MCP server for redacting, analyzing, and un-redacting sensitive data fr
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) package manager
+- [LibreOffice](https://www.libreoffice.org/download/) (optional, for legacy `.doc` file support)
 
 ## Setup
 
@@ -90,9 +91,25 @@ Add custom patterns or list active entity types at runtime.
 
 Redact sensitive data in a file. Writes a new file with `_redacted` suffix.
 
+Supported formats: `.txt`, `.csv`, `.log`, `.md`, `.pdf`, `.xlsx`, `.docx`, `.doc`
+
 ```json
-{"file_path": "/path/to/document.txt"}
+{"file_path": "/path/to/document.pdf", "use_placeholders": true}
 ```
+
+- `use_placeholders` (default `true`): Use `[ENTITY_TYPE_N]` placeholders (reversible via `unredact_file`).
+- `use_placeholders: false`: For PDFs, applies black-box redaction (irreversible).
+- `.doc` files are converted to `.docx` via LibreOffice.
+
+### `unredact_file`
+
+Restore a previously redacted file to the original using a session ID from `redact_file`.
+
+```json
+{"file_path": "/path/to/document_redacted.pdf", "session_id": "uuid-from-redact_file"}
+```
+
+Only works on files redacted with `use_placeholders: true`.
 
 ## Supported Entity Types
 
