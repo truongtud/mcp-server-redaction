@@ -3,6 +3,7 @@ from .unredact import handle_unredact
 from .analyze import handle_analyze
 from .configure import handle_configure
 from .redact_file import handle_redact_file
+from .unredact_file import handle_unredact_file
 
 __all__ = [
     "handle_redact",
@@ -10,4 +11,5 @@ __all__ = [
     "handle_analyze",
     "handle_configure",
     "handle_redact_file",
+    "handle_unredact_file",
 ]

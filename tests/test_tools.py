@@ -7,6 +7,7 @@ from mcp_server_redaction.tools.unredact import handle_unredact
 from mcp_server_redaction.tools.analyze import handle_analyze
 from mcp_server_redaction.tools.configure import handle_configure
 from mcp_server_redaction.tools.redact_file import handle_redact_file
+from mcp_server_redaction.tools.unredact_file import handle_unredact_file
 
 
 class TestRedactTool:
@@ -132,3 +133,58 @@ class TestRedactFileTool:
         result = handle_redact_file(self.engine, file_path="/tmp/nonexistent_file.txt")
         data = json.loads(result)
         assert "error" in data
+
+
+class TestUnredactFileTool:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+
+    def test_unredact_file_roundtrip(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False
+        ) as f:
+            f.write("Contact john@example.com for details.\n")
+            input_path = f.name
+
+        try:
+            redact_result = json.loads(
+                handle_redact_file(self.engine, file_path=input_path)
+            )
+            session_id = redact_result["session_id"]
+            redacted_path = redact_result["redacted_file_path"]
+
+            result = json.loads(
+                handle_unredact_file(
+                    self.engine,
+                    file_path=redacted_path,
+                    session_id=session_id,
+                )
+            )
+            assert "unredacted_file_path" in result
+            assert result["entities_restored"] >= 1
+
+            with open(result["unredacted_file_path"]) as rf:
+                content = rf.read()
+            assert "john@example.com" in content
+
+            os.unlink(result["unredacted_file_path"])
+            os.unlink(redacted_path)
+        finally:
+            os.unlink(input_path)
+
+    def test_unredact_file_bad_session(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False
+        ) as f:
+            f.write("[EMAIL_ADDRESS_1]\n")
+            path = f.name
+
+        try:
+            result = json.loads(
+                handle_unredact_file(
+                    self.engine, file_path=path, session_id="bad-id"
+                )
+            )
+            assert "error" in result
+        finally:
+            os.unlink(path)

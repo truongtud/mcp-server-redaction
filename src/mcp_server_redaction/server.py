@@ -89,5 +89,19 @@ def redact_file(
     )
 
 
+@mcp.tool()
+def unredact_file(file_path: str, session_id: str) -> str:
+    """Restore a previously redacted file to the original using a session ID.
+
+    Only works on files redacted with use_placeholders=True.
+
+    Args:
+        file_path: Absolute path to the redacted file.
+        session_id: The session ID returned by the redact_file tool.
+    """
+    from .tools.unredact_file import handle_unredact_file
+    return handle_unredact_file(engine, file_path=file_path, session_id=session_id)
+
+
 def main():
     mcp.run(transport="stdio")
