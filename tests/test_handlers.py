@@ -1,7 +1,10 @@
 import os
 import tempfile
 
+import docx as python_docx
+
 from mcp_server_redaction.engine import RedactionEngine
+from mcp_server_redaction.handlers.docx_handler import DocxHandler
 from mcp_server_redaction.handlers.plain_text import PlainTextHandler
 
 
@@ -80,3 +83,72 @@ class TestHandlerDispatch:
     def test_get_handler_unsupported(self):
         with pytest.raises(ValueError, match="Unsupported file extension"):
             get_handler(".xyz")
+
+
+def _create_test_docx(path: str, paragraphs: list[str]) -> None:
+    doc = python_docx.Document()
+    for text in paragraphs:
+        doc.add_paragraph(text)
+    doc.save(path)
+
+
+class TestDocxHandler:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+        self.handler = DocxHandler()
+
+    def test_redact_docx(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.docx")
+            output_path = os.path.join(tmpdir, "test_redacted.docx")
+
+            _create_test_docx(input_path, [
+                "Contact john@example.com for details.",
+                "No sensitive data here.",
+            ])
+
+            result = self.handler.redact(self.engine, input_path, output_path)
+            assert result["entities_found"] >= 1
+            assert result["session_id"] is not None
+
+            doc = python_docx.Document(output_path)
+            all_text = "\n".join(p.text for p in doc.paragraphs)
+            assert "john@example.com" not in all_text
+            assert "[EMAIL_ADDRESS_1]" in all_text
+            assert "No sensitive data here." in all_text
+
+    def test_unredact_docx(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.docx")
+            redacted_path = os.path.join(tmpdir, "test_redacted.docx")
+            unredacted_path = os.path.join(tmpdir, "test_unredacted.docx")
+
+            _create_test_docx(input_path, ["Contact john@example.com for details."])
+
+            result = self.handler.redact(self.engine, input_path, redacted_path)
+            mappings = self.engine.state.get_mappings(result["session_id"])
+
+            undo = self.handler.unredact(redacted_path, unredacted_path, mappings)
+            assert undo["entities_restored"] >= 1
+
+            doc = python_docx.Document(unredacted_path)
+            assert "john@example.com" in doc.paragraphs[0].text
+
+    def test_redact_docx_with_table(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.docx")
+            output_path = os.path.join(tmpdir, "test_redacted.docx")
+
+            doc = python_docx.Document()
+            doc.add_paragraph("Header text")
+            table = doc.add_table(rows=1, cols=2)
+            table.cell(0, 0).text = "Name"
+            table.cell(0, 1).text = "john@example.com"
+            doc.save(input_path)
+
+            result = self.handler.redact(self.engine, input_path, output_path)
+            assert result["entities_found"] >= 1
+
+            out_doc = python_docx.Document(output_path)
+            cell_text = out_doc.tables[0].cell(0, 1).text
+            assert "john@example.com" not in cell_text
