@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import tempfile
 
 import docx as python_docx
@@ -303,3 +305,55 @@ class TestPdfHandler:
             page_text = doc[0].get_text()
             doc.close()
             assert "john@example.com" in page_text
+
+
+from mcp_server_redaction.handlers.doc import DocHandler
+
+LIBREOFFICE_AVAILABLE = shutil.which("libreoffice") is not None
+
+
+class TestDocHandler:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+        self.handler = DocHandler()
+
+    def test_doc_handler_without_libreoffice_errors(self):
+        """Test that DocHandler raises RuntimeError when LibreOffice is not available."""
+        original_which = shutil.which
+
+        def fake_which(name):
+            if name == "libreoffice":
+                return None
+            return original_which(name)
+
+        shutil.which = fake_which
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                input_path = os.path.join(tmpdir, "test.doc")
+                output_path = os.path.join(tmpdir, "test_redacted.docx")
+                with open(input_path, "w") as f:
+                    f.write("dummy")
+                with pytest.raises(RuntimeError, match="LibreOffice is required"):
+                    self.handler.redact(self.engine, input_path, output_path)
+        finally:
+            shutil.which = original_which
+
+    @pytest.mark.skipif(not LIBREOFFICE_AVAILABLE, reason="LibreOffice not installed")
+    def test_redact_doc(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a .docx first, then convert to .doc via LibreOffice
+            docx_path = os.path.join(tmpdir, "test.docx")
+            doc = python_docx.Document()
+            doc.add_paragraph("Contact john@example.com for details.")
+            doc.save(docx_path)
+
+            subprocess.run(
+                ["libreoffice", "--headless", "--convert-to", "doc",
+                 "--outdir", tmpdir, docx_path],
+                check=True, capture_output=True,
+            )
+            input_path = os.path.join(tmpdir, "test.doc")
+            output_path = os.path.join(tmpdir, "test_redacted.docx")
+
+            result = self.handler.redact(self.engine, input_path, output_path)
+            assert result["entities_found"] >= 1

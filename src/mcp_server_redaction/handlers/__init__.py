@@ -1,4 +1,5 @@
 from .base import FileHandler
+from .doc import DocHandler
 from .docx_handler import DocxHandler
 from .pdf import PdfHandler
 from .plain_text import PlainTextHandler
@@ -9,6 +10,7 @@ _HANDLER_MAP: dict[str, type[FileHandler]] = {
     ".csv": PlainTextHandler,
     ".log": PlainTextHandler,
     ".md": PlainTextHandler,
+    ".doc": DocHandler,
     ".docx": DocxHandler,
     ".xlsx": XlsxHandler,
     ".pdf": PdfHandler,
