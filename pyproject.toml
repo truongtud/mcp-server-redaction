@@ -12,6 +12,9 @@ dependencies = [
     "presidio-analyzer",
     "presidio-anonymizer",
     "spacy",
+    "PyMuPDF",
+    "openpyxl",
+    "python-docx",
 ]
 
 [project.scripts]
