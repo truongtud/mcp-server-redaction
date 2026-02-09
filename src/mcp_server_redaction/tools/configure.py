@@ -3,6 +3,7 @@ import json
 from presidio_analyzer import Pattern, PatternRecognizer
 
 from ..engine import RedactionEngine
+from ..llm_reviewer import LLMReviewer
 
 
 def handle_configure(
@@ -33,4 +34,5 @@ def handle_configure(
     return json.dumps({
         "status": "ok",
         "active_entities": sorted(active_entities),
+        "llm_available": LLMReviewer.is_available(),
     })

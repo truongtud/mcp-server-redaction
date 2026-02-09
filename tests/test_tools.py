@@ -101,6 +101,16 @@ class TestConfigureTool:
         assert "EMAIL_ADDRESS" in data["active_entities"]
 
 
+class TestLLMConfiguration:
+    def setup_method(self):
+        self.engine = RedactionEngine(use_llm=False)
+
+    def test_server_exposes_llm_status_in_configure(self):
+        result = json.loads(handle_configure(self.engine))
+        assert "llm_available" in result
+        assert isinstance(result["llm_available"], bool)
+
+
 class TestRedactFileTool:
     def setup_method(self):
         self.engine = RedactionEngine()
