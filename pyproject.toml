@@ -9,12 +9,14 @@ description = "MCP server for redacting sensitive data from text"
 requires-python = ">=3.10"
 dependencies = [
     "mcp[cli]",
-    "presidio-analyzer",
+    "presidio-analyzer[gliner]",
     "presidio-anonymizer",
     "spacy",
     "PyMuPDF",
     "openpyxl",
     "python-docx",
+    "ollama",
+    "onnxruntime<1.24",
 ]
 
 [project.scripts]
