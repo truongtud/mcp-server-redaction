@@ -194,6 +194,37 @@ class TestExpandedFinancialRecognizers:
         assert any(r.entity_type == "POSTAL_CODE" for r in results)
 
 
+class TestExpandedMedicalRecognizers:
+    def _make_analyzer(self):
+        from mcp_server_redaction.recognizers import build_registry
+        registry = build_registry()
+        return AnalyzerEngine(registry=registry)
+
+    def test_detect_npi_number(self):
+        analyzer = self._make_analyzer()
+        text = "Provider NPI: 1234567890"
+        results = analyzer.analyze(text, entities=["NPI_NUMBER"], language="en")
+        assert any(r.entity_type == "NPI_NUMBER" for r in results)
+
+    def test_detect_dea_number(self):
+        analyzer = self._make_analyzer()
+        text = "DEA number: AB1234567"
+        results = analyzer.analyze(text, entities=["DEA_NUMBER"], language="en")
+        assert any(r.entity_type == "DEA_NUMBER" for r in results)
+
+    def test_detect_health_insurance_id(self):
+        analyzer = self._make_analyzer()
+        text = "Insurance ID: XYZ123456789"
+        results = analyzer.analyze(text, entities=["INSURANCE_ID"], language="en")
+        assert any(r.entity_type == "INSURANCE_ID" for r in results)
+
+    def test_detect_policy_number(self):
+        analyzer = self._make_analyzer()
+        text = "Policy number: POL-2024-00012345"
+        results = analyzer.analyze(text, entities=["INSURANCE_ID"], language="en")
+        assert any(r.entity_type == "INSURANCE_ID" for r in results)
+
+
 class TestBuildRegistry:
     def test_registry_has_custom_entities(self):
         registry = build_registry()
