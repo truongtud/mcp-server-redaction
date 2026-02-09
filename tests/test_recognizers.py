@@ -157,6 +157,43 @@ class TestExpandedSecretsRecognizers:
         assert any(r.entity_type == "SSH_PRIVATE_KEY" for r in results)
 
 
+class TestExpandedFinancialRecognizers:
+    def _make_analyzer(self):
+        from mcp_server_redaction.recognizers import build_registry
+        registry = build_registry()
+        return AnalyzerEngine(registry=registry)
+
+    def test_detect_swift_code(self):
+        analyzer = self._make_analyzer()
+        text = "Transfer via SWIFT: DEUTDEFF500"
+        results = analyzer.analyze(text, entities=["SWIFT_CODE"], language="en")
+        assert any(r.entity_type == "SWIFT_CODE" for r in results)
+
+    def test_detect_swift_code_8char(self):
+        analyzer = self._make_analyzer()
+        text = "BIC code is BNPAFRPP"
+        results = analyzer.analyze(text, entities=["SWIFT_CODE"], language="en")
+        assert any(r.entity_type == "SWIFT_CODE" for r in results)
+
+    def test_detect_us_zip(self):
+        analyzer = self._make_analyzer()
+        text = "Address: 123 Main St, Springfield, IL 62704-1234"
+        results = analyzer.analyze(text, entities=["POSTAL_CODE"], language="en")
+        assert any(r.entity_type == "POSTAL_CODE" for r in results)
+
+    def test_detect_uk_postcode(self):
+        analyzer = self._make_analyzer()
+        text = "Office at London SW1A 1AA"
+        results = analyzer.analyze(text, entities=["POSTAL_CODE"], language="en")
+        assert any(r.entity_type == "POSTAL_CODE" for r in results)
+
+    def test_detect_de_plz(self):
+        analyzer = self._make_analyzer()
+        text = "Adresse: Berliner Str. 1, 10115 Berlin"
+        results = analyzer.analyze(text, entities=["POSTAL_CODE"], language="en")
+        assert any(r.entity_type == "POSTAL_CODE" for r in results)
+
+
 class TestBuildRegistry:
     def test_registry_has_custom_entities(self):
         registry = build_registry()
