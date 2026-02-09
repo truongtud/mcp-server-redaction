@@ -52,3 +52,39 @@ class TestRedactionEngine:
         assert "[EMAIL_ADDRESS_1]" in result["redacted_text"]
         # PERSON should NOT be redacted since we filtered to EMAIL only
         assert "John Smith" in result["redacted_text"] or "[PERSON" not in result["redacted_text"]
+
+
+class TestHybridDetection:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+
+    def test_redact_detects_email_and_person(self):
+        """Basic sanity: L1 regex + L2 GLiNER should both contribute."""
+        text = "Contact John Smith at john@example.com"
+        result = self.engine.redact(text)
+        assert result["entities_found"] >= 2
+        assert "[EMAIL_ADDRESS_" in result["redacted_text"]
+        assert "[PERSON_" in result["redacted_text"]
+
+    def test_redact_multilingual_name(self):
+        """GLiNER should detect non-English names."""
+        text = "Kontaktieren Sie Herrn Hans Müller für Details."
+        result = self.engine.redact(text)
+        # At minimum, GLiNER should detect the person name
+        assert result["entities_found"] >= 1
+
+    def test_llm_layer_disabled_by_default_in_tests(self):
+        """LLM layer should not block engine when Ollama is not available."""
+        engine = RedactionEngine(use_llm=False)
+        text = "Test text with john@example.com"
+        result = engine.redact(text)
+        assert result["entities_found"] >= 1
+
+    def test_engine_backward_compatible(self):
+        """Existing interface unchanged: returns redacted_text, session_id, entities_found."""
+        text = "My email is test@example.com"
+        result = self.engine.redact(text)
+        assert "redacted_text" in result
+        assert "session_id" in result
+        assert "entities_found" in result
+        assert isinstance(result["session_id"], str)
