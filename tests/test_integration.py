@@ -76,6 +76,56 @@ class TestEndToEnd:
         assert "PRJ-1234" not in redact_result["redacted_text"]
 
 
+class TestHybridDetectionIntegration:
+    def setup_method(self):
+        self.engine = RedactionEngine(use_llm=False)
+
+    def test_redact_english_pii_comprehensive(self):
+        text = (
+            "Patient John Smith (DOB: 03/15/1985) visited Dr. Sarah Johnson. "
+            "Insurance: POL-2024-00045678. Email: john.smith@hospital.org. "
+            "Prescribed Metformin 500mg. NPI: 1234567890."
+        )
+        result = self.engine.redact(text)
+        assert result["entities_found"] >= 4  # name, email, drug, policy at minimum
+        assert "john.smith@hospital.org" not in result["redacted_text"]
+        assert "John Smith" not in result["redacted_text"]
+
+    def test_redact_german_text(self):
+        text = "Herr Hans Müller wohnt in der Berliner Straße 42, 10115 Berlin. Tel: +49 30 12345678."
+        result = self.engine.redact(text)
+        assert result["entities_found"] >= 1  # GLiNER should catch the name at minimum
+
+    def test_redact_mixed_language(self):
+        text = (
+            "Customer Nguyễn Văn An called about policy POL-2024-00099999. "
+            "His email is an.nguyen@example.com."
+        )
+        result = self.engine.redact(text)
+        assert "an.nguyen@example.com" not in result["redacted_text"]
+        assert result["entities_found"] >= 2
+
+    def test_unredact_still_works_after_hybrid_detection(self):
+        text = "Contact Jane Doe at jane@example.com"
+        redact_result = self.engine.redact(text)
+        unredact_result = self.engine.unredact(
+            redact_result["redacted_text"],
+            redact_result["session_id"],
+        )
+        assert "jane@example.com" in unredact_result["original_text"]
+
+    def test_file_redaction_uses_hybrid_engine(self, tmp_path):
+        """File handlers should benefit from the hybrid engine automatically."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Send invoice to Hans Müller, hans@firma.de, policy POL-2024-00012345")
+
+        result = json.loads(
+            handle_redact_file(self.engine, str(test_file))
+        )
+        assert result["entities_found"] >= 2
+        assert "error" not in result
+
+
 class TestFileFormatRoundtrips:
     def setup_method(self):
         self.engine = RedactionEngine()
