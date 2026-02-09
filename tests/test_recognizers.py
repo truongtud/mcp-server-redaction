@@ -126,6 +126,105 @@ class TestMedicalRecognizers:
         assert len(results) == 0
 
 
+class TestExpandedSecretsRecognizers:
+    def _make_analyzer(self):
+        from mcp_server_redaction.recognizers import build_registry
+        registry = build_registry()
+        return AnalyzerEngine(registry=registry)
+
+    def test_detect_gcp_api_key(self):
+        analyzer = self._make_analyzer()
+        text = "Set GOOGLE_API_KEY=AIzaSyA1234567890abcdefghijklmnopqrstuv"
+        results = analyzer.analyze(text, entities=["API_KEY"], language="en")
+        assert any(r.entity_type == "API_KEY" for r in results)
+
+    def test_detect_slack_token(self):
+        analyzer = self._make_analyzer()
+        text = "token: xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx"
+        results = analyzer.analyze(text, entities=["API_KEY"], language="en")
+        assert any(r.entity_type == "API_KEY" for r in results)
+
+    def test_detect_jwt_token(self):
+        analyzer = self._make_analyzer()
+        text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+        results = analyzer.analyze(text, entities=["API_KEY"], language="en")
+        assert any(r.entity_type == "API_KEY" for r in results)
+
+    def test_detect_ssh_private_key(self):
+        analyzer = self._make_analyzer()
+        text = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA..."
+        results = analyzer.analyze(text, entities=["SSH_PRIVATE_KEY"], language="en")
+        assert any(r.entity_type == "SSH_PRIVATE_KEY" for r in results)
+
+
+class TestExpandedFinancialRecognizers:
+    def _make_analyzer(self):
+        from mcp_server_redaction.recognizers import build_registry
+        registry = build_registry()
+        return AnalyzerEngine(registry=registry)
+
+    def test_detect_swift_code(self):
+        analyzer = self._make_analyzer()
+        text = "Transfer via SWIFT: DEUTDEFF500"
+        results = analyzer.analyze(text, entities=["SWIFT_CODE"], language="en")
+        assert any(r.entity_type == "SWIFT_CODE" for r in results)
+
+    def test_detect_swift_code_8char(self):
+        analyzer = self._make_analyzer()
+        text = "BIC code is BNPAFRPP"
+        results = analyzer.analyze(text, entities=["SWIFT_CODE"], language="en")
+        assert any(r.entity_type == "SWIFT_CODE" for r in results)
+
+    def test_detect_us_zip(self):
+        analyzer = self._make_analyzer()
+        text = "Address: 123 Main St, Springfield, IL 62704-1234"
+        results = analyzer.analyze(text, entities=["POSTAL_CODE"], language="en")
+        assert any(r.entity_type == "POSTAL_CODE" for r in results)
+
+    def test_detect_uk_postcode(self):
+        analyzer = self._make_analyzer()
+        text = "Office at London SW1A 1AA"
+        results = analyzer.analyze(text, entities=["POSTAL_CODE"], language="en")
+        assert any(r.entity_type == "POSTAL_CODE" for r in results)
+
+    def test_detect_de_plz(self):
+        analyzer = self._make_analyzer()
+        text = "Adresse: Berliner Str. 1, 10115 Berlin"
+        results = analyzer.analyze(text, entities=["POSTAL_CODE"], language="en")
+        assert any(r.entity_type == "POSTAL_CODE" for r in results)
+
+
+class TestExpandedMedicalRecognizers:
+    def _make_analyzer(self):
+        from mcp_server_redaction.recognizers import build_registry
+        registry = build_registry()
+        return AnalyzerEngine(registry=registry)
+
+    def test_detect_npi_number(self):
+        analyzer = self._make_analyzer()
+        text = "Provider NPI: 1234567890"
+        results = analyzer.analyze(text, entities=["NPI_NUMBER"], language="en")
+        assert any(r.entity_type == "NPI_NUMBER" for r in results)
+
+    def test_detect_dea_number(self):
+        analyzer = self._make_analyzer()
+        text = "DEA number: AB1234567"
+        results = analyzer.analyze(text, entities=["DEA_NUMBER"], language="en")
+        assert any(r.entity_type == "DEA_NUMBER" for r in results)
+
+    def test_detect_health_insurance_id(self):
+        analyzer = self._make_analyzer()
+        text = "Insurance ID: XYZ123456789"
+        results = analyzer.analyze(text, entities=["INSURANCE_ID"], language="en")
+        assert any(r.entity_type == "INSURANCE_ID" for r in results)
+
+    def test_detect_policy_number(self):
+        analyzer = self._make_analyzer()
+        text = "Policy number: POL-2024-00012345"
+        results = analyzer.analyze(text, entities=["INSURANCE_ID"], language="en")
+        assert any(r.entity_type == "INSURANCE_ID" for r in results)
+
+
 class TestBuildRegistry:
     def test_registry_has_custom_entities(self):
         registry = build_registry()
