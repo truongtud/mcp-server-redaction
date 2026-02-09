@@ -126,6 +126,37 @@ class TestMedicalRecognizers:
         assert len(results) == 0
 
 
+class TestExpandedSecretsRecognizers:
+    def _make_analyzer(self):
+        from mcp_server_redaction.recognizers import build_registry
+        registry = build_registry()
+        return AnalyzerEngine(registry=registry)
+
+    def test_detect_gcp_api_key(self):
+        analyzer = self._make_analyzer()
+        text = "Set GOOGLE_API_KEY=AIzaSyA1234567890abcdefghijklmnopqrstuv"
+        results = analyzer.analyze(text, entities=["API_KEY"], language="en")
+        assert any(r.entity_type == "API_KEY" for r in results)
+
+    def test_detect_slack_token(self):
+        analyzer = self._make_analyzer()
+        text = "token: xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx"
+        results = analyzer.analyze(text, entities=["API_KEY"], language="en")
+        assert any(r.entity_type == "API_KEY" for r in results)
+
+    def test_detect_jwt_token(self):
+        analyzer = self._make_analyzer()
+        text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+        results = analyzer.analyze(text, entities=["API_KEY"], language="en")
+        assert any(r.entity_type == "API_KEY" for r in results)
+
+    def test_detect_ssh_private_key(self):
+        analyzer = self._make_analyzer()
+        text = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA..."
+        results = analyzer.analyze(text, entities=["SSH_PRIVATE_KEY"], language="en")
+        assert any(r.entity_type == "SSH_PRIVATE_KEY" for r in results)
+
+
 class TestBuildRegistry:
     def test_registry_has_custom_entities(self):
         registry = build_registry()
