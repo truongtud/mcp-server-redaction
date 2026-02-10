@@ -1,0 +1,6 @@
+services:
+  mcp-server-redaction:
+    build: .
+    stdin_open: true
+    volumes:
+      - ./data:/data
