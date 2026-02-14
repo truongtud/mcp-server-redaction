@@ -98,6 +98,20 @@ def _create_test_docx(path: str, paragraphs: list[str]) -> None:
     doc.save(path)
 
 
+def _create_formatted_docx(path: str) -> None:
+    """Create a DOCX with mixed formatting: 'Contact <bold>John Smith</bold> at <italic>john@example.com</italic> today.'"""
+    doc = python_docx.Document()
+    para = doc.add_paragraph()
+    run1 = para.add_run("Contact ")
+    run2 = para.add_run("John Smith")
+    run2.bold = True
+    run3 = para.add_run(" at ")
+    run4 = para.add_run("john@example.com")
+    run4.italic = True
+    run5 = para.add_run(" today.")
+    doc.save(path)
+
+
 class TestDocxHandler:
     def setup_method(self):
         self.engine = RedactionEngine()
@@ -158,6 +172,37 @@ class TestDocxHandler:
             out_doc = python_docx.Document(output_path)
             cell_text = out_doc.tables[0].cell(0, 1).text
             assert "john@example.com" not in cell_text
+
+
+    def test_redact_preserves_run_formatting(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "formatted.docx")
+            output_path = os.path.join(tmpdir, "formatted_redacted.docx")
+
+            _create_formatted_docx(input_path)
+
+            result = self.handler.redact(self.engine, input_path, output_path)
+            assert result["entities_found"] >= 1
+
+            doc = python_docx.Document(output_path)
+            para = doc.paragraphs[0]
+            all_text = para.text
+            assert "john@example.com" not in all_text
+            assert "John Smith" not in all_text
+
+            # Verify formatting is preserved on non-redacted runs
+            runs_text = [(r.text, r.bold, r.italic) for r in para.runs if r.text.strip()]
+            # "Contact" should not be bold
+            contact_runs = [r for r in runs_text if "Contact" in r[0]]
+            assert len(contact_runs) >= 1
+            assert contact_runs[0][1] is not True  # not bold
+
+            # The last run (originally " today.") should not be italic.
+            # Note: "today" may be detected as DATE_TIME, so look for the
+            # run that ends with "." — it came from the non-italic run5.
+            last_runs = [r for r in runs_text if r[0].endswith(".")]
+            assert len(last_runs) >= 1
+            assert last_runs[0][2] is not True  # not italic
 
 
 class TestXlsxHandler:

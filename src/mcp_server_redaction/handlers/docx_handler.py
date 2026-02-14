@@ -17,7 +17,6 @@ class DocxHandler(FileHandler):
         total_found = 0
         session_id = None
 
-        # Process paragraphs
         for para in doc.paragraphs:
             if not para.text.strip():
                 continue
@@ -28,9 +27,8 @@ class DocxHandler(FileHandler):
                     session_id = result["session_id"]
                 else:
                     self._merge_session(engine, session_id, result["session_id"])
-                self._replace_paragraph_text(para, result["redacted_text"])
+                self._surgical_replace(para, result["entities"])
 
-        # Process tables
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
@@ -44,7 +42,7 @@ class DocxHandler(FileHandler):
                                 session_id = result["session_id"]
                             else:
                                 self._merge_session(engine, session_id, result["session_id"])
-                            self._replace_paragraph_text(para, result["redacted_text"])
+                            self._surgical_replace(para, result["entities"])
 
         if session_id is None:
             session_id = engine.state.create_session()
@@ -62,33 +60,109 @@ class DocxHandler(FileHandler):
         entities_restored = 0
 
         for para in doc.paragraphs:
-            new_text, count = self._apply_mappings(para.text, mappings)
-            if count > 0:
-                entities_restored += count
-                self._replace_paragraph_text(para, new_text)
+            count = self._surgical_unredact(para, mappings)
+            entities_restored += count
 
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for para in cell.paragraphs:
-                        new_text, count = self._apply_mappings(para.text, mappings)
-                        if count > 0:
-                            entities_restored += count
-                            self._replace_paragraph_text(para, new_text)
+                        count = self._surgical_unredact(para, mappings)
+                        entities_restored += count
 
         doc.save(output_path)
         return {"entities_restored": entities_restored}
 
     @staticmethod
-    def _replace_paragraph_text(para, new_text: str) -> None:
-        """Replace paragraph text while preserving the first run's formatting."""
-        if not para.runs:
-            para.text = new_text
+    def _surgical_replace(para, entities: list[dict]) -> None:
+        """Replace PII in paragraph runs surgically, preserving formatting.
+
+        Falls back to full-paragraph replacement if run mapping fails.
+        """
+        if not entities:
             return
-        first_run = para.runs[0]
-        for run in para.runs[1:]:
-            run.text = ""
-        first_run.text = new_text
+
+        runs = para.runs
+        if not runs:
+            # No runs — simple text-only paragraph, just replace
+            text = para.text
+            for ent in sorted(entities, key=lambda e: e["original_start"], reverse=True):
+                text = text[:ent["original_start"]] + ent["placeholder"] + text[ent["original_end"]:]
+            para.text = text
+            return
+
+        # Build run offset map
+        concatenated = "".join(r.text for r in runs)
+        if concatenated != para.text:
+            # Run text doesn't match paragraph text — fall back
+            text = para.text
+            for ent in sorted(entities, key=lambda e: e["original_start"], reverse=True):
+                text = text[:ent["original_start"]] + ent["placeholder"] + text[ent["original_end"]:]
+            runs[0].text = text
+            for r in runs[1:]:
+                r.text = ""
+            return
+
+        # Map each run to its character range
+        run_ranges = []
+        offset = 0
+        for run in runs:
+            end = offset + len(run.text)
+            run_ranges.append((offset, end))
+            offset = end
+
+        # Process entities right-to-left to preserve positions
+        for ent in sorted(entities, key=lambda e: e["original_start"], reverse=True):
+            orig_start = ent["original_start"]
+            orig_end = ent["original_end"]
+            placeholder = ent["placeholder"]
+
+            for i, (run_start, run_end) in enumerate(run_ranges):
+                if orig_start >= run_end:
+                    continue
+                if orig_start < run_start:
+                    break
+
+                local_start = orig_start - run_start
+
+                if orig_end <= run_end:
+                    # Case 1: PII fits entirely within this single run
+                    local_end = orig_end - run_start
+                    runs[i].text = runs[i].text[:local_start] + placeholder + runs[i].text[local_end:]
+                else:
+                    # Case 2: PII crosses run boundaries
+                    runs[i].text = runs[i].text[:local_start] + placeholder
+                    for j in range(i + 1, len(run_ranges)):
+                        sub_start, sub_end = run_ranges[j]
+                        if sub_end <= orig_end:
+                            runs[j].text = ""
+                        else:
+                            local_trim = orig_end - sub_start
+                            runs[j].text = runs[j].text[local_trim:]
+                            break
+                break
+
+    @staticmethod
+    def _surgical_unredact(para, mappings: dict[str, str]) -> int:
+        """Replace placeholders in runs surgically, preserving formatting."""
+        count = 0
+        for run in para.runs:
+            for placeholder, original in mappings.items():
+                if placeholder in run.text:
+                    run.text = run.text.replace(placeholder, original)
+                    count += 1
+        if count == 0:
+            # Check if placeholder spans runs (unlikely but possible)
+            full_text = para.text
+            for placeholder, original in mappings.items():
+                if placeholder in full_text:
+                    full_text = full_text.replace(placeholder, original)
+                    count += 1
+            if count > 0 and para.runs:
+                para.runs[0].text = full_text
+                for r in para.runs[1:]:
+                    r.text = ""
+        return count
 
     @staticmethod
     def _apply_mappings(text: str, mappings: dict[str, str]) -> tuple[str, int]:
@@ -101,7 +175,6 @@ class DocxHandler(FileHandler):
 
     @staticmethod
     def _merge_session(engine: RedactionEngine, target_id: str, source_id: str) -> None:
-        """Copy all mappings from source session into target session."""
         source_mappings = engine.state.get_mappings(source_id)
         if source_mappings:
             for placeholder, original in source_mappings.items():
