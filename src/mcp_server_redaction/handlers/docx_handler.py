@@ -165,16 +165,8 @@ class DocxHandler(FileHandler):
         return count
 
     @staticmethod
-    def _apply_mappings(text: str, mappings: dict[str, str]) -> tuple[str, int]:
-        count = 0
-        for placeholder, original in mappings.items():
-            if placeholder in text:
-                text = text.replace(placeholder, original)
-                count += 1
-        return text, count
-
-    @staticmethod
     def _merge_session(engine: RedactionEngine, target_id: str, source_id: str) -> None:
+        """Copy all mappings from source session into target session."""
         source_mappings = engine.state.get_mappings(source_id)
         if source_mappings:
             for placeholder, original in source_mappings.items():
