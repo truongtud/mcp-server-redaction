@@ -70,13 +70,14 @@ class RedactionEngine:
                 "redacted_text": text,
                 "session_id": session_id,
                 "entities_found": 0,
+                "entities": [],
             }
 
         # Sort by start position (descending) so we can replace right-to-left
         results.sort(key=lambda r: r.start, reverse=True)
 
         type_counters: dict[str, int] = {}
-        replacements: list[tuple[int, int, str, str]] = []
+        replacements: list[tuple[int, int, str, str, str]] = []  # start, end, placeholder, original_value, entity_type
 
         for result in results:
             entity_type = result.entity_type
@@ -84,18 +85,29 @@ class RedactionEngine:
             type_counters[entity_type] += 1
             placeholder = f"[{entity_type}_{type_counters[entity_type]}]"
             original_value = text[result.start : result.end]
-            replacements.append((result.start, result.end, placeholder, original_value))
+            replacements.append((result.start, result.end, placeholder, original_value, entity_type))
 
         redacted_text = text
         session_id = self._state.create_session()
-        for start, end, placeholder, original_value in replacements:
+        entity_list = []
+        for start, end, placeholder, original_value, entity_type in replacements:
             redacted_text = redacted_text[:start] + placeholder + redacted_text[end:]
             self._state.add_mapping(session_id, placeholder, original_value)
+            entity_list.append({
+                "type": entity_type,
+                "original_start": start,
+                "original_end": end,
+                "placeholder": placeholder,
+            })
+
+        # Reverse so entities are in forward (left-to-right) order
+        entity_list.reverse()
 
         return {
             "redacted_text": redacted_text,
             "session_id": session_id,
             "entities_found": len(results),
+            "entities": entity_list,
         }
 
     def unredact(self, redacted_text: str, session_id: str) -> dict:

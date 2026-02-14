@@ -46,6 +46,24 @@ class TestRedactionEngine:
         # Partially masked — should not show the full email
         assert entity["text"] != "john@example.com"
 
+    def test_redact_returns_entity_positions(self):
+        result = self.engine.redact("Contact john@example.com for info")
+        assert "entities" in result
+        assert len(result["entities"]) >= 1
+        entity = result["entities"][0]
+        assert "original_start" in entity
+        assert "original_end" in entity
+        assert "placeholder" in entity
+        assert "type" in entity
+        # Verify positions point to actual PII in original text
+        original_text = "Contact john@example.com for info"
+        assert original_text[entity["original_start"]:entity["original_end"]] == "john@example.com"
+
+    def test_redact_no_entities_returns_empty_list(self):
+        result = self.engine.redact("Hello world")
+        assert "entities" in result
+        assert result["entities"] == []
+
     def test_redact_with_entity_type_filter(self):
         text = "John Smith john@example.com"
         result = self.engine.redact(text, entity_types=["EMAIL_ADDRESS"])
