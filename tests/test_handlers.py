@@ -269,12 +269,12 @@ class TestXlsxHandler:
             assert wb_out.active["A1"].value == "john@example.com"
 
 
-def _create_test_pdf(path: str, pages: list[str]) -> None:
+def _create_test_pdf(path: str, pages: list[str], fontsize: float = 12) -> None:
     """Helper: create a PDF with one text block per page."""
     doc = fitz.open()
     for text in pages:
         page = doc.new_page()
-        page.insert_text((72, 72), text, fontsize=12)
+        page.insert_text((72, 72), text, fontsize=fontsize)
     doc.save(path)
     doc.close()
 
@@ -350,6 +350,40 @@ class TestPdfHandler:
             page_text = doc[0].get_text()
             doc.close()
             assert "john@example.com" in page_text
+
+    def test_redact_pdf_preserves_font_size(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.pdf")
+            output_path = os.path.join(tmpdir, "test_redacted.pdf")
+
+            _create_test_pdf(input_path, [
+                "Contact john@example.com for details."
+            ], fontsize=18)
+
+            result = self.handler.redact(
+                self.engine, input_path, output_path,
+                use_placeholders=True,
+            )
+            assert result["entities_found"] >= 1
+
+            doc = fitz.open(output_path)
+            blocks = doc[0].get_text("dict")["blocks"]
+            doc.close()
+
+            # Find the span containing the placeholder
+            placeholder_fontsize = None
+            for block in blocks:
+                if "lines" not in block:
+                    continue
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        if "[EMAIL_ADDRESS_1]" in span["text"]:
+                            placeholder_fontsize = span["size"]
+
+            # Font size should be closer to 18 than the old hardcoded 10.
+            # PyMuPDF may scale down to fit replacement text in the original rect.
+            assert placeholder_fontsize is not None
+            assert placeholder_fontsize > 12  # well above the old hardcoded 10
 
 
 from mcp_server_redaction.handlers.doc import DocHandler

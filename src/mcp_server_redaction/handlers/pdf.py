@@ -22,7 +22,6 @@ class PdfHandler(FileHandler):
             if not page_text.strip():
                 continue
 
-            # Run engine to get redacted text and entity mappings
             result = engine.redact(page_text, entity_types=entity_types)
             if result["entities_found"] == 0:
                 continue
@@ -34,21 +33,28 @@ class PdfHandler(FileHandler):
                 else:
                     self._merge_session(engine, session_id, result["session_id"])
 
-            # Get the mappings to find original text -> placeholder pairs
             mappings = engine.state.get_mappings(result["session_id"])
             if not mappings:
                 continue
 
-            # For each placeholder->original pair, find original text on page and redact
+            # Extract font info before redacting
+            spans = self._get_spans(page) if use_placeholders else []
+
             for placeholder, original_text in mappings.items():
                 rects = page.search_for(original_text)
+                font_info = self._find_font_info(spans, original_text) if spans else None
+
                 for rect in rects:
                     if use_placeholders:
-                        page.add_redact_annot(
-                            rect,
-                            text=placeholder,
-                            fontsize=10,
-                        )
+                        annot_kwargs = {"text": placeholder}
+                        if font_info:
+                            annot_kwargs["fontsize"] = font_info["fontsize"]
+                            annot_kwargs["fontname"] = font_info.get("fontname", "helv")
+                            if font_info.get("color") is not None:
+                                annot_kwargs["text_color"] = font_info["color"]
+                        else:
+                            annot_kwargs["fontsize"] = 10
+                        page.add_redact_annot(rect, **annot_kwargs)
                     else:
                         page.add_redact_annot(rect)
 
@@ -76,10 +82,20 @@ class PdfHandler(FileHandler):
 
         for page in doc:
             page_had_changes = False
+            spans = self._get_spans(page)
+
             for placeholder, original in mappings.items():
                 rects = page.search_for(placeholder)
+                font_info = self._find_font_info(spans, placeholder) if spans else None
+
                 for rect in rects:
-                    page.add_redact_annot(rect, text=original, fontsize=10)
+                    annot_kwargs = {"text": original}
+                    if font_info:
+                        annot_kwargs["fontsize"] = font_info["fontsize"]
+                        annot_kwargs["fontname"] = font_info.get("fontname", "helv")
+                    else:
+                        annot_kwargs["fontsize"] = 10
+                    page.add_redact_annot(rect, **annot_kwargs)
                     entities_restored += 1
                     page_had_changes = True
             if page_had_changes:
@@ -90,7 +106,50 @@ class PdfHandler(FileHandler):
         return {"entities_restored": entities_restored}
 
     @staticmethod
+    def _get_spans(page) -> list[dict]:
+        """Extract all text spans with font metadata from a page."""
+        spans = []
+        try:
+            blocks = page.get_text("dict")["blocks"]
+        except Exception:
+            return spans
+
+        for block in blocks:
+            if "lines" not in block:
+                continue
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    if span.get("text"):
+                        spans.append(span)
+        return spans
+
+    @staticmethod
+    def _find_font_info(spans: list[dict], text: str) -> dict | None:
+        """Find font info for text that may be a substring of a span."""
+        for span in spans:
+            if text in span["text"]:
+                fontname = span.get("font", "helv")
+                # Map to PDF base-14 font if custom font not embeddable
+                if fontname not in ("helv", "tiro", "cour", "Helvetica", "Times-Roman", "Courier"):
+                    flags = span.get("flags", 0)
+                    is_mono = bool(flags & (1 << 0))
+                    is_serif = bool(flags & (1 << 1))
+                    if is_mono:
+                        fontname = "cour"
+                    elif is_serif:
+                        fontname = "tiro"
+                    else:
+                        fontname = "helv"
+                return {
+                    "fontsize": span.get("size", 10),
+                    "fontname": fontname,
+                    "color": span.get("color"),
+                }
+        return None
+
+    @staticmethod
     def _merge_session(engine: RedactionEngine, target_id: str, source_id: str) -> None:
+        """Copy all mappings from source session into target session."""
         source_mappings = engine.state.get_mappings(source_id)
         if source_mappings:
             for placeholder, original in source_mappings.items():
