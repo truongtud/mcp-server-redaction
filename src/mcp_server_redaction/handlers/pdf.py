@@ -93,6 +93,8 @@ class PdfHandler(FileHandler):
                     if font_info:
                         annot_kwargs["fontsize"] = font_info["fontsize"]
                         annot_kwargs["fontname"] = font_info.get("fontname", "helv")
+                        if font_info.get("color") is not None:
+                            annot_kwargs["text_color"] = font_info["color"]
                     else:
                         annot_kwargs["fontsize"] = 10
                     page.add_redact_annot(rect, **annot_kwargs)
