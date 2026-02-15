@@ -205,6 +205,54 @@ class TestDocxHandler:
             assert last_runs[0][2] is not True  # not italic
 
 
+    def test_redact_preserves_formatting_cross_run_pii(self):
+        """PII that spans two runs — placeholder takes first run's format."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "cross_run.docx")
+            output_path = os.path.join(tmpdir, "cross_run_redacted.docx")
+
+            doc = python_docx.Document()
+            para = doc.add_paragraph()
+            para.add_run("Contact ")
+            run2 = para.add_run("john@exam")
+            run2.bold = True
+            para.add_run("ple.com")
+            para.add_run(" for details.")
+            doc.save(input_path)
+
+            result = self.handler.redact(self.engine, input_path, output_path)
+            assert result["entities_found"] >= 1
+
+            out_doc = python_docx.Document(output_path)
+            para = out_doc.paragraphs[0]
+            assert "john@example.com" not in para.text
+            assert "john@exam" not in para.text
+            assert "ple.com" not in para.text
+
+    def test_unredact_preserves_formatting(self):
+        """Unredact should also preserve run formatting."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "test.docx")
+            redacted_path = os.path.join(tmpdir, "test_redacted.docx")
+            unredacted_path = os.path.join(tmpdir, "test_unredacted.docx")
+
+            _create_formatted_docx(input_path)
+
+            result = self.handler.redact(self.engine, input_path, redacted_path)
+            mappings = self.engine.state.get_mappings(result["session_id"])
+
+            undo = self.handler.unredact(redacted_path, unredacted_path, mappings)
+            assert undo["entities_restored"] >= 1
+
+            doc = python_docx.Document(unredacted_path)
+            para = doc.paragraphs[0]
+            assert "john@example.com" in para.text
+            # Non-redacted run formatting should be preserved
+            runs_text = [(r.text, r.bold, r.italic) for r in para.runs if r.text.strip()]
+            last_runs = [r for r in runs_text if r[0].endswith(".")]
+            assert len(last_runs) >= 1
+
+
 class TestXlsxHandler:
     def setup_method(self):
         self.engine = RedactionEngine()
