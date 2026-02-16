@@ -50,6 +50,10 @@ class RedactionEngine:
 
         results = self._analyzer.analyze(**kwargs)
         results = self._remove_overlaps(results)
+        results = [
+            r for r in results
+            if self._validate_entity(text[r.start:r.end], r.entity_type)
+        ]
 
         # --- L3: LLM review (find what L1+L2 missed) ---
         already_found = [text[r.start:r.end] for r in results]
@@ -75,6 +79,10 @@ class RedactionEngine:
                     )
                 )
             results = self._remove_overlaps(results)
+            results = [
+                r for r in results
+                if self._validate_entity(text[r.start:r.end], r.entity_type)
+            ]
 
         if not results:
             session_id = self._state.create_session()
@@ -150,6 +158,10 @@ class RedactionEngine:
 
         results = self._analyzer.analyze(**kwargs)
         results = self._remove_overlaps(results)
+        results = [
+            r for r in results
+            if self._validate_entity(text[r.start:r.end], r.entity_type)
+        ]
 
         entities = []
         for result in results:
@@ -177,6 +189,26 @@ class RedactionEngine:
             ):
                 kept.append(result)
         return kept
+
+    @staticmethod
+    def _validate_entity(text: str, entity_type: str) -> bool:
+        """Check if detected text plausibly matches its entity type."""
+        import re
+
+        validators = {
+            "SWIFT_CODE": lambda t: bool(re.fullmatch(r"[A-Z]{6}[A-Z0-9]{2,5}", t)),
+            "IBAN": lambda t: bool(re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{4,}", t)),
+            "CREDIT_CARD": lambda t: len(re.sub(r"\D", "", t)) in range(13, 20),
+            "US_SSN": lambda t: bool(re.fullmatch(r"\d{3}-?\d{2}-?\d{4}", t)),
+            "EMAIL_ADDRESS": lambda t: "@" in t and "." in t.split("@")[-1],
+            "IP_ADDRESS": lambda t: bool(re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", t)),
+            "PHONE_NUMBER": lambda t: len(re.sub(r"\D", "", t)) >= 7,
+        }
+
+        validator = validators.get(entity_type)
+        if validator is None:
+            return True  # No rule = pass through
+        return validator(text)
 
     @staticmethod
     def _partial_mask(value: str) -> str:
