@@ -16,7 +16,7 @@ class RedactionEngine:
         self._analyzer = AnalyzerEngine(registry=self._registry)
         self._state = state_manager or StateManager()
         self._llm = LLMReviewer(enabled=use_llm and LLMReviewer.is_available())
-        self._score_threshold = score_threshold
+        self.score_threshold = score_threshold  # uses the validated setter
 
     @property
     def score_threshold(self) -> float:
@@ -24,6 +24,8 @@ class RedactionEngine:
 
     @score_threshold.setter
     def score_threshold(self, value: float) -> None:
+        if not (0.0 <= value <= 1.0):
+            raise ValueError(f"score_threshold must be between 0.0 and 1.0, got {value}")
         self._score_threshold = value
 
     @property

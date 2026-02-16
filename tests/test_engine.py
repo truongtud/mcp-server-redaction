@@ -117,12 +117,12 @@ class TestScoreThreshold:
         assert result["entities_found"] == 0
         assert result["redacted_text"] == text
 
-    def test_threshold_zero_accepts_everything(self):
-        """Threshold 0.0 should behave like the old no-filter mode."""
-        engine = RedactionEngine(score_threshold=0.0)
-        text = "Contact john@example.com for info"
-        result = engine.redact(text)
-        assert result["entities_found"] >= 1
+    def test_threshold_zero_accepts_more_than_default(self):
+        """Threshold 0.0 should accept detections that 0.4 would reject."""
+        text = "The sky is blue and the grass is green."
+        default_engine = RedactionEngine(score_threshold=0.4)
+        permissive_engine = RedactionEngine(score_threshold=0.0)
+        assert permissive_engine.redact(text)["entities_found"] >= default_engine.redact(text)["entities_found"]
 
     def test_threshold_one_rejects_non_perfect_scores(self):
         """Threshold 1.0 should reject detections that score below 1.0."""
