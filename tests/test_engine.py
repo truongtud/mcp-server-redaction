@@ -146,3 +146,51 @@ class TestScoreThreshold:
         result = engine.analyze("Contact John Smith for details")
         # GLiNER name detection scores below 1.0, so should be filtered out
         assert len(result["entities"]) == 0
+
+
+class TestEntityValidation:
+    def test_validate_swift_code_accepts_valid(self):
+        assert RedactionEngine._validate_entity("DEUTDEFF", "SWIFT_CODE") is True
+        assert RedactionEngine._validate_entity("DEUTDEFF500", "SWIFT_CODE") is True
+
+    def test_validate_swift_code_rejects_lowercase(self):
+        assert RedactionEngine._validate_entity("document", "SWIFT_CODE") is False
+        assert RedactionEngine._validate_entity("credentials", "SWIFT_CODE") is False
+        assert RedactionEngine._validate_entity("separate", "SWIFT_CODE") is False
+
+    def test_validate_iban_accepts_valid(self):
+        assert RedactionEngine._validate_entity("GB29NWBK60161331926819", "IBAN") is True
+
+    def test_validate_iban_rejects_words(self):
+        assert RedactionEngine._validate_entity("something", "IBAN") is False
+
+    def test_validate_email_accepts_valid(self):
+        assert RedactionEngine._validate_entity("john@example.com", "EMAIL_ADDRESS") is True
+
+    def test_validate_email_rejects_no_at(self):
+        assert RedactionEngine._validate_entity("notanemail", "EMAIL_ADDRESS") is False
+
+    def test_validate_ip_accepts_valid(self):
+        assert RedactionEngine._validate_entity("192.168.1.1", "IP_ADDRESS") is True
+
+    def test_validate_ip_rejects_words(self):
+        assert RedactionEngine._validate_entity("localhost", "IP_ADDRESS") is False
+
+    def test_validate_ssn_accepts_valid(self):
+        assert RedactionEngine._validate_entity("123-45-6789", "US_SSN") is True
+        assert RedactionEngine._validate_entity("123456789", "US_SSN") is True
+
+    def test_validate_ssn_rejects_short(self):
+        assert RedactionEngine._validate_entity("12345", "US_SSN") is False
+
+    def test_validate_phone_accepts_valid(self):
+        assert RedactionEngine._validate_entity("555-123-4567", "PHONE_NUMBER") is True
+
+    def test_validate_phone_rejects_short(self):
+        assert RedactionEngine._validate_entity("12", "PHONE_NUMBER") is False
+
+    def test_validate_unknown_type_passes_through(self):
+        """Entity types without validation rules should always pass."""
+        assert RedactionEngine._validate_entity("anything", "PERSON") is True
+        assert RedactionEngine._validate_entity("anything", "ORGANIZATION") is True
+        assert RedactionEngine._validate_entity("anything", "LOCATION") is True
