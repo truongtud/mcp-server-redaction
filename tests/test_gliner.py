@@ -36,3 +36,34 @@ class TestGLiNERRecognizer:
         results = self.analyzer.analyze(text, language="en")
         for r in results:
             assert 0.0 < r.score <= 1.0
+
+
+class TestGlinerEntityMapping:
+    def test_mapping_excludes_structured_types(self):
+        """GLiNER should NOT try to detect types better handled by regex."""
+        from mcp_server_redaction.recognizers.gliner_setup import GLINER_ENTITY_MAPPING
+        structured_types = {
+            "passport number", "credit card number", "social security number",
+            "bank account number", "driver's license number",
+            "tax identification number", "identity card number",
+            "national id number", "ip address", "iban",
+            "health insurance number", "insurance number",
+            "registration number", "postal code", "license plate number",
+        }
+        for label in structured_types:
+            assert label not in GLINER_ENTITY_MAPPING, (
+                f"'{label}' should not be in GLiNER mapping — use L1 regex instead"
+            )
+
+    def test_mapping_keeps_semantic_types(self):
+        """GLiNER should still detect types that need ML context awareness."""
+        from mcp_server_redaction.recognizers.gliner_setup import GLINER_ENTITY_MAPPING
+        semantic_types = {
+            "person", "organization", "address", "email",
+            "phone number", "mobile phone number",
+            "date of birth", "medication", "medical condition", "username",
+        }
+        for label in semantic_types:
+            assert label in GLINER_ENTITY_MAPPING, (
+                f"'{label}' should remain in GLiNER mapping"
+            )
