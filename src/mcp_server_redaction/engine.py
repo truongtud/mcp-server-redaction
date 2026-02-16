@@ -10,11 +10,21 @@ class RedactionEngine:
         self,
         state_manager: StateManager | None = None,
         use_llm: bool = True,
+        score_threshold: float = 0.4,
     ):
         self._registry = build_registry()
         self._analyzer = AnalyzerEngine(registry=self._registry)
         self._state = state_manager or StateManager()
         self._llm = LLMReviewer(enabled=use_llm and LLMReviewer.is_available())
+        self._score_threshold = score_threshold
+
+    @property
+    def score_threshold(self) -> float:
+        return self._score_threshold
+
+    @score_threshold.setter
+    def score_threshold(self, value: float) -> None:
+        self._score_threshold = value
 
     @property
     def state(self) -> StateManager:
@@ -32,7 +42,7 @@ class RedactionEngine:
         self._state.prune_expired()
 
         # --- L1 + L2: Presidio (regex recognizers + GLiNER) ---
-        kwargs: dict = {"text": text, "language": "en"}
+        kwargs: dict = {"text": text, "language": "en", "score_threshold": self._score_threshold}
         if entity_types:
             kwargs["entities"] = entity_types
 
@@ -132,7 +142,7 @@ class RedactionEngine:
         text: str,
         entity_types: list[str] | None = None,
     ) -> dict:
-        kwargs: dict = {"text": text, "language": "en"}
+        kwargs: dict = {"text": text, "language": "en", "score_threshold": self._score_threshold}
         if entity_types:
             kwargs["entities"] = entity_types
 
