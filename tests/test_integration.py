@@ -206,3 +206,21 @@ class TestFileFormatRoundtrips:
             doc_out = fitz.open(unredact_result["unredacted_file_path"])
             assert "john@example.com" in doc_out[0].get_text()
             doc_out.close()
+
+
+class TestConfigureThreshold:
+    def setup_method(self):
+        self.engine = RedactionEngine()
+
+    def test_configure_sets_score_threshold(self):
+        result = json.loads(
+            handle_configure(self.engine, score_threshold=0.7)
+        )
+        assert result["status"] == "ok"
+        assert result["score_threshold"] == 0.7
+        assert self.engine.score_threshold == 0.7
+
+    def test_configure_reports_current_threshold(self):
+        result = json.loads(handle_configure(self.engine))
+        assert "score_threshold" in result
+        assert result["score_threshold"] == 0.4  # default
