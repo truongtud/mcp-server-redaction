@@ -106,3 +106,43 @@ class TestHybridDetection:
         assert "session_id" in result
         assert "entities_found" in result
         assert isinstance(result["session_id"], str)
+
+
+class TestScoreThreshold:
+    def test_default_threshold_filters_low_confidence(self):
+        """Engine with default threshold (0.4) should not redact plain prose."""
+        engine = RedactionEngine()
+        text = "The sky is blue and the grass is green."
+        result = engine.redact(text)
+        assert result["entities_found"] == 0
+        assert result["redacted_text"] == text
+
+    def test_threshold_zero_accepts_everything(self):
+        """Threshold 0.0 should behave like the old no-filter mode."""
+        engine = RedactionEngine(score_threshold=0.0)
+        text = "Contact john@example.com for info"
+        result = engine.redact(text)
+        assert result["entities_found"] >= 1
+
+    def test_threshold_one_rejects_non_perfect_scores(self):
+        """Threshold 1.0 should reject detections that score below 1.0."""
+        engine = RedactionEngine(score_threshold=1.0)
+        text = "Contact John Smith for details"
+        result = engine.redact(text)
+        # GLiNER name detection scores below 1.0, so should be filtered out
+        assert result["entities_found"] == 0
+        assert result["redacted_text"] == text
+
+    def test_custom_threshold_via_property(self):
+        """score_threshold should be readable and writable."""
+        engine = RedactionEngine(score_threshold=0.6)
+        assert engine.score_threshold == 0.6
+        engine.score_threshold = 0.3
+        assert engine.score_threshold == 0.3
+
+    def test_analyze_respects_threshold(self):
+        """The analyze() method should also respect score_threshold."""
+        engine = RedactionEngine(score_threshold=1.0)
+        result = engine.analyze("Contact John Smith for details")
+        # GLiNER name detection scores below 1.0, so should be filtered out
+        assert len(result["entities"]) == 0
