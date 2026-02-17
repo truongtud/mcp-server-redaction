@@ -224,3 +224,53 @@ class TestConfigureThreshold:
         result = json.loads(handle_configure(self.engine))
         assert "score_threshold" in result
         assert result["score_threshold"] == 0.4  # default
+
+
+class TestFalsePositiveRegression:
+    """Regression tests for known false positive patterns.
+
+    These sentences previously triggered false detections. They should
+    produce zero or minimal redactions with the precision improvements.
+    """
+
+    def setup_method(self):
+        self.engine = RedactionEngine(use_llm=False)
+
+    def test_blog_prose_not_over_redacted(self):
+        text = (
+            "I Built an MCP Server That Lets Claude Redact Your Documents "
+            "Before Reading Them. The gap between 'I need an LLM' and "
+            "'this data shouldn't leave my machine' is wider than it should be."
+        )
+        result = self.engine.redact(text)
+        # This prose contains no real PII — should have very few or zero detections.
+        # "Claude" might still be flagged as PERSON (acceptable), but nothing else.
+        assert result["entities_found"] <= 2
+        assert "SWIFT_CODE" not in result["redacted_text"]
+
+    def test_common_words_not_flagged_as_swift(self):
+        text = "The credentials in the document are separate from the database."
+        result = self.engine.redact(text)
+        assert "SWIFT_CODE" not in result["redacted_text"]
+
+    def test_time_expressions_not_over_flagged(self):
+        text = "They spend twenty minutes manually scrubbing names and account numbers."
+        result = self.engine.redact(text)
+        # "twenty minutes" should not become [DATE_TIME_N]
+        assert "twenty minutes" in result["redacted_text"] or result["entities_found"] <= 1
+
+    def test_product_names_not_flagged(self):
+        text = "Something where Claude could clean the document itself."
+        result = self.engine.redact(text)
+        assert "SWIFT_CODE" not in result["redacted_text"]
+
+    def test_real_pii_still_detected(self):
+        """Ensure precision improvements don't kill recall on real PII."""
+        text = (
+            "Patient John Smith (DOB: 03/15/1985) visited Dr. Sarah Johnson. "
+            "Email: john.smith@hospital.org. Insurance: POL-2024-00045678."
+        )
+        result = self.engine.redact(text)
+        assert "john.smith@hospital.org" not in result["redacted_text"]
+        assert "John Smith" not in result["redacted_text"]
+        assert result["entities_found"] >= 3
