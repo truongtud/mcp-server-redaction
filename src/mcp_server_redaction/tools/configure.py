@@ -10,6 +10,7 @@ def handle_configure(
     engine: RedactionEngine,
     custom_patterns: list[dict] | None = None,
     disabled_entities: list[str] | None = None,
+    score_threshold: float | None = None,
 ) -> str:
     if custom_patterns:
         for pattern_def in custom_patterns:
@@ -26,6 +27,9 @@ def handle_configure(
             )
             engine.registry.add_recognizer(recognizer)
 
+    if score_threshold is not None:
+        engine.score_threshold = score_threshold
+
     active_entities = engine.registry.get_supported_entities()
 
     if disabled_entities:
@@ -34,5 +38,6 @@ def handle_configure(
     return json.dumps({
         "status": "ok",
         "active_entities": sorted(active_entities),
+        "score_threshold": engine.score_threshold,
         "llm_available": LLMReviewer.is_available(),
     })

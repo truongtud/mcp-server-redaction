@@ -52,16 +52,25 @@ def analyze(text: str, entity_types: list[str] | None = None) -> str:
 def configure(
     custom_patterns: list[dict] | None = None,
     disabled_entities: list[str] | None = None,
+    score_threshold: float | None = None,
 ) -> str:
-    """Configure the redaction engine at runtime. Add custom patterns or disable entity types.
+    """Configure the redaction engine at runtime. Add custom patterns, disable entity types, or adjust sensitivity.
 
     Args:
         custom_patterns: List of pattern dicts with keys: name, pattern, score.
                          Example: [{"name": "INTERNAL_ID", "pattern": "ID-\\\\d{6}", "score": 0.9}]
         disabled_entities: List of entity type names to disable.
+        score_threshold: Minimum confidence score (0.0-1.0) for entity detections.
+                         Lower = more detections (more false positives).
+                         Higher = fewer detections (more precise). Default: 0.4.
     """
     from .tools.configure import handle_configure
-    return handle_configure(engine, custom_patterns=custom_patterns, disabled_entities=disabled_entities)
+    return handle_configure(
+        engine,
+        custom_patterns=custom_patterns,
+        disabled_entities=disabled_entities,
+        score_threshold=score_threshold,
+    )
 
 
 @mcp.tool()
